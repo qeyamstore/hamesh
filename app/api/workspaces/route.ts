@@ -1,0 +1,7 @@
+import { getChatGPTUser } from '../../chatgpt-auth';
+import { env } from 'cloudflare:workers';
+import { emptyPayload } from '../../../lib/model';
+export const dynamic='force-dynamic';
+function json(data:unknown,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store'}})}
+export async function GET(){const user=await getChatGPTUser();if(!user)return json({error:'سجل الدخول للوصول إلى متاجرك'},401);const result=await env.DB!.prepare('SELECT id,name,revision,created_at FROM workspaces WHERE owner_id=? ORDER BY created_at DESC').bind(user.userId).all();return json({stores:result.results})}
+export async function POST(req:Request){const user=await getChatGPTUser();if(!user)return json({error:'سجل الدخول أولًا'},401);if(req.headers.get('origin')!==new URL(req.url).origin)return json({error:'طلب غير مسموح'},403);let b:any;try{b=await req.json()}catch{return json({error:'بيانات غير صالحة'},400)}if(!b||typeof b.name!=='string'||!b.name.trim()||b.name.length>80)return json({error:'اسم المتجر مطلوب وبحد أقصى 80 حرفًا'},400);const id=crypto.randomUUID();const p=emptyPayload();const result=await env.DB!.prepare('INSERT INTO workspaces (id,owner_id,name,payload,revision,created_at) SELECT ?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM workspaces WHERE owner_id=?) < 20').bind(id,user.userId,b.name.trim(),JSON.stringify(p),1,new Date().toISOString(),user.userId).run();if(!result.meta.changes)return json({error:'الحد الأقصى للتجربة 20 متجرًا لكل حساب'},409);return json({id,name:b.name.trim(),payload:p,revision:1},201)}

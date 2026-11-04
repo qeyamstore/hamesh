@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+const base=process.env.TEST_BASE||'http://localhost:4173';
+const user='qa-'+crypto.randomUUID();const headers=(who=user)=>({'Content-Type':'application/json','Origin':base,'oai-authenticated-user-id':who,'oai-authenticated-user-email':who+'@test.invalid'});
+const call=async(path,method='GET',body,who=user)=>{const r=await fetch(base+path,{method,headers:who===null?{}:headers(who),body:body?JSON.stringify(body):undefined});const data=await r.json();return{status:r.status,data}};
+assert.equal((await call('/api/workspaces','GET',undefined,null)).status,401);
+let a=await call('/api/workspaces','POST',{name:'اختبار عزل A'});assert.equal(a.status,201,JSON.stringify(a));const id=a.data.id;const payload=a.data.payload;
+assert.equal((await call('/api/workspaces/'+id,'GET',undefined,'qa-other')).status,404);
+assert.equal((await call('/api/workspaces/'+id,'PUT',{payload,revision:1},'qa-other')).status,404);
+assert.equal((await call('/api/workspaces/'+id,'PUT',{payload,revision:1})).status,200);
+assert.equal((await call('/api/workspaces/'+id,'PUT',{payload,revision:1})).status,409);
+const updated=await call('/api/workspaces/'+id);assert.equal(updated.data.revision,2);
+assert.equal((await call('/api/workspaces/'+id,'PUT',{payload:{...payload,settings:{...payload.settings,shipping:-1}},revision:2})).status,400);
+const cross=await fetch(base+'/api/workspaces',{method:'POST',headers:{...headers(),Origin:'https://other.invalid'},body:JSON.stringify({name:'bad'})});assert.equal(cross.status,403);
+const list=await call('/api/workspaces');assert.equal(list.data.stores.length,1);
+const other=await call('/api/workspaces','GET',undefined,'qa-other');assert.equal(other.data.stores.length,0);
+console.log('PASS: anonymous rejection, workspace creation, ownership read/write isolation, persistence, stale revision conflict, validation, CSRF, account list isolation');

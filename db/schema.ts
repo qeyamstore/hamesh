@@ -1,0 +1,4 @@
+import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+export const workspaces = sqliteTable('workspaces', {id:text('id').primaryKey(),ownerId:text('owner_id').notNull(),name:text('name').notNull(),payload:text('payload').notNull(),revision:integer('revision').notNull().default(1),createdAt:text('created_at').notNull()},t=>[index('workspace_owner').on(t.ownerId)]);
+export const adLinks=sqliteTable('ad_links',{id:text('id').primaryKey(),workspaceId:text('workspace_id').notNull(),provider:text('provider').notNull(),secret:text('secret').notNull(),account:text('account'),currency:text('currency'),lastSync:text('last_sync'),status:text('status').notNull().default('connected')});
+export const adStates=sqliteTable('ad_states',{id:text('id').primaryKey(),ownerId:text('owner_id').notNull(),workspaceId:text('workspace_id').notNull(),provider:text('provider').notNull(),expires:integer('expires').notNull()});

@@ -1,0 +1,14 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {defaultSettings as s,orderProfit,summary,payloadSchema,orderSchema,demoWorkspace,parseCSV,csvCell} from '../lib/model.ts';
+const o={id:'one',date:'2026-10-01',product:'product',quantity:2,unitPrice:100,unitCost:30,discount:20,shippingIncome:10,status:'completed',returnQty:0,payment:'card',shippingActual:null,returnActual:null,feeActual:null};
+test('completed, discount and shipping income',()=>{let c=orderProfit(o,s);assert.equal(c.revenue,190);assert.equal(c.cog,60);assert.equal(c.fees,5.75);assert.equal(c.profit,96.25)});
+test('cancelled incurs no estimated costs',()=>{const c=orderProfit({...o,status:'cancelled'},s);for(const k of ['revenue','cog','shipping','back','fees','profit'])assert.equal(c[k],0)});
+test('full return recovers stock, refunds shipping and retains fees',()=>{const c=orderProfit({...o,status:'returned'},s);assert.equal(c.revenue,0);assert.equal(c.cog,0);assert.equal(c.profit,-61.75)});
+test('partial return allocates discount and cost by units',()=>{const c=orderProfit({...o,status:'partial',returnQty:1},s);assert.equal(c.revenue,100);assert.equal(c.cog,30);assert.equal(c.profit,8.25)});
+test('COD non delivery does not charge collection fee',()=>{const c=orderProfit({...o,status:'undelivered',payment:'cod'},s);assert.equal(c.fees,0);assert.equal(c.profit,-56)});
+test('actual zero overrides estimates',()=>{const c=orderProfit({...o,shippingActual:0,feeActual:0},s);assert.equal(c.profit,130);assert.equal(c.estimated,false)});
+test('ads are deducted even with no orders in period',()=>{const p={settings:s,orders:[],ads:[{id:'a',date:'2026-10-01',channel:'Meta',amount:500}],plan:'starter'};assert.equal(summary(p,'2026-10-01','2026-10-31').net,-500)});
+test('demo validates and totals reconcile',()=>{const w=demoWorkspace();assert.equal(payloadSchema.safeParse(w.payload).success,true);const t=summary(w.payload,'2026-10-01','2026-10-31');assert.ok(Math.abs(t.net-(t.revenue-t.cog-t.shipping-t.back-t.fees-t.ads))<1e-8)});
+test('duplicate ids invalid',()=>{const p=demoWorkspace().payload;p.orders.push(p.orders[0]);assert.equal(payloadSchema.safeParse(p).success,false)});
+test('invalid date, quantities and costs rejected',()=>{for(const patch of [{date:'2026-02-31'},{unitCost:-1},{quantity:0},{status:'partial',returnQty:2},{discount:201}])assert.equal(orderSchema.safeParse({...o,...patch}).success,false)});
+test('csv quotes, commas, CRLF, multiline and BOM',()=>{assert.deepEqual(parseCSV('\uFEFFid,name\r\n1,"hello, ""world"""\r\n2,"a\nb"'),[['id','name'],['1','hello, "world"'],['2','a\nb']]);assert.throws(()=>parseCSV('1,"oops'));assert.equal(csvCell('=SUM(A1)'), '"\'=SUM(A1)"')});
